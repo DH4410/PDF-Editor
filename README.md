@@ -1,20 +1,47 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# PDF Form Unlocker
 
-# Run and deploy your AI Studio app
+A fully client-side web app that removes **"Read-Only" restrictions** from PDF forms so you can
+fill them out directly in your browser. Drop in a locked PDF and it strips the read-only flags
+from the form fields, then opens the unlocked document in a built-in viewer where you can fill it
+in and download it.
 
-This contains everything you need to run your app locally.
+Everything runs locally in your browser using [`pdf-lib`](https://github.com/Hopding/pdf-lib) —
+your files are never uploaded to a server, and **no API key is required**.
 
-View your app in AI Studio: https://ai.studio/apps/fca81c6f-3ffa-47ca-a5d5-2016c2776169
+> The repository is named `PDF-Editor`; the app itself is the "PDF Form Unlocker" described here.
+
+## Features
+
+- Drag-and-drop or click to upload a PDF
+- Removes the "Read-Only" flag from every interactive form field
+- Strips standard owner-password restrictions when the document is re-saved
+- Built-in PDF viewer with one-click download of the unlocked file
+
+## Tech Stack
+
+- React 19 + TypeScript
+- Vite
+- Tailwind CSS
+- [pdf-lib](https://github.com/Hopding/pdf-lib)
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** [Node.js](https://nodejs.org/)
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   ```
+2. Start the dev server:
+   ```bash
+   npm run dev
+   ```
+   The app runs at **http://localhost:3000**.
+
+## Build for Production
+
+```bash
+npm run build
+```
+
+The static site is written to `dist/`, which can be deployed to any static host (e.g. Vercel).
