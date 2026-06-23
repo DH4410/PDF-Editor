@@ -1,0 +1,6 @@
+{
+  "name": "PDF Filler",
+  "description": "Upload a PDF, add text fields anywhere, and save the filled document.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
