@@ -1,12 +1,13 @@
 # PDF Form Unlocker
 
-A fully client-side web app that removes **"Read-Only" restrictions** from PDF forms so you can
-fill them out directly in your browser. Drop in a locked PDF and it strips the read-only flags
-from the form fields, then opens the unlocked document in a built-in viewer where you can fill it
-in and download it.
+A fully client-side web app that removes **"Read-Only" restrictions** from PDF forms and lets you
+**add a signature** — directly in your browser. Drop in a locked PDF and it strips the read-only
+flags from the form fields, renders the document in a built-in viewer, and lets you draw a
+signature and click anywhere to place it before downloading the finished file.
 
-Everything runs locally in your browser using [`pdf-lib`](https://github.com/Hopding/pdf-lib) —
-your files are never uploaded to a server, and **no API key is required**.
+Everything runs locally in your browser using [`pdf-lib`](https://github.com/Hopding/pdf-lib) and
+[`pdf.js`](https://mozilla.github.io/pdf.js/) — your files are never uploaded to a server, and
+**no API key is required**.
 
 > The repository is named `PDF-Editor`; the app itself is the "PDF Form Unlocker" described here.
 
@@ -15,14 +16,15 @@ your files are never uploaded to a server, and **no API key is required**.
 - Drag-and-drop or click to upload a PDF
 - Removes the "Read-Only" flag from every interactive form field
 - Strips standard owner-password restrictions when the document is re-saved
-- Built-in PDF viewer with one-click download of the unlocked file
+- Draw a signature and click to place it anywhere on any page (add as many as you like)
+- Built-in PDF viewer with one-click download of the finished file
 
 ## Tech Stack
 
 - React 19 + TypeScript
 - Vite
 - Tailwind CSS
-- [pdf-lib](https://github.com/Hopding/pdf-lib)
+- [pdf-lib](https://github.com/Hopding/pdf-lib) (editing) + [pdf.js](https://mozilla.github.io/pdf.js/) (rendering)
 
 ## Run Locally
 
