@@ -1,63 +1,92 @@
 import { useEffect, useRef, useState } from 'react';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { pdfjsLib } from './pdfjs';
 
 interface PdfViewerProps {
-  bytes: Uint8Array;
+  doc: PDFDocumentProxy;
   placing: boolean;
   // Reports a click position in PDF user-space points (origin bottom-left),
   // already corrected for scale and page rotation.
   onPlace: (pageIndex: number, pdfX: number, pdfY: number) => void;
 }
 
-// Renders every page of a PDF to its own canvas and, while `placing`, turns a
-// click on a page into a position in PDF coordinates.
-export default function PdfViewer({ bytes, placing, onPlace }: PdfViewerProps) {
+// Minimal link service: form rendering needs one, but this app has no link
+// navigation, so every method is a no-op.
+const linkService: any = {
+  externalLinkEnabled: true,
+  externalLinkTarget: null,
+  externalLinkRel: null,
+  getDestinationHash: () => '#',
+  getAnchorUrl: () => '#',
+  addLinkAttributes: (link: HTMLAnchorElement, url: string) => { link.href = url || '#'; },
+  goToDestination: async () => {},
+  goToPage: () => {},
+  setHash: () => {},
+  executeNamedAction: () => {},
+  executeSetOCGState: () => {},
+  isPageVisible: () => true,
+  isPageCached: () => true,
+};
+
+// Renders every page of a PDF to a canvas with an interactive form layer on
+// top. While `placing`, the form layer is click-through so a click on the page
+// becomes a signature position in PDF coordinates.
+export default function PdfViewer({ doc, placing, onPlace }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const layersRef = useRef<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Keep the latest placing/onPlace in refs so the render effect doesn't need
-  // to re-run (and re-render the whole document) when they change.
+  // Keep latest placing/onPlace in refs so the (expensive) render effect does
+  // not re-run when they change.
   const placingRef = useRef(placing);
   const onPlaceRef = useRef(onPlace);
   useEffect(() => { placingRef.current = placing; }, [placing]);
   useEffect(() => { onPlaceRef.current = onPlace; }, [onPlace]);
+
+  // Toggle form-field interactivity without re-rendering the document.
+  useEffect(() => {
+    layersRef.current.forEach((layer) => layer.togglePointerEvents(!placing));
+  }, [placing]);
 
   useEffect(() => {
     let cancelled = false;
     const container = containerRef.current;
     if (!container) return;
     setLoading(true);
+    layersRef.current = [];
 
     (async () => {
-      // pdf.js detaches the buffer it is given, so hand it a copy.
-      const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
-      if (cancelled) return;
       container.innerHTML = '';
-
       const dpr = window.devicePixelRatio || 1;
       const targetWidth = Math.min(820, (container.clientWidth || 820) - 32);
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
         if (cancelled) return;
 
         const cssScale = targetWidth / page.getViewport({ scale: 1 }).width;
-        const viewport = page.getViewport({ scale: cssScale * dpr });
+        // High-res viewport for a crisp canvas...
+        const renderViewport = page.getViewport({ scale: cssScale * dpr });
+        // ...and a CSS-pixel viewport that the displayed canvas and the form
+        // layer are both sized against (the form layer positions widgets in CSS
+        // pixels, so it must NOT include devicePixelRatio).
+        const cssViewport = page.getViewport({ scale: cssScale });
+
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.style.margin = '0 auto 16px';
+        wrapper.style.width = `${cssViewport.width}px`;
+        wrapper.style.height = `${cssViewport.height}px`;
 
         const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${viewport.width / dpr}px`;
-        canvas.style.height = `${viewport.height / dpr}px`;
+        canvas.width = renderViewport.width;
+        canvas.height = renderViewport.height;
+        canvas.style.width = `${cssViewport.width}px`;
+        canvas.style.height = `${cssViewport.height}px`;
         canvas.style.display = 'block';
         canvas.style.background = '#fff';
         canvas.style.boxShadow = '0 1px 4px rgba(15,23,42,0.18)';
-
-        const wrapper = document.createElement('div');
-        wrapper.style.margin = '0 auto 16px';
-        wrapper.style.width = 'fit-content';
         wrapper.appendChild(canvas);
-        container.appendChild(wrapper);
 
         const pageIndex = i - 1;
         canvas.addEventListener('click', (ev) => {
@@ -65,12 +94,51 @@ export default function PdfViewer({ bytes, placing, onPlace }: PdfViewerProps) {
           const rect = canvas.getBoundingClientRect();
           const vx = (ev.clientX - rect.left) * (canvas.width / rect.width);
           const vy = (ev.clientY - rect.top) * (canvas.height / rect.height);
-          const [pdfX, pdfY] = viewport.convertToPdfPoint(vx, vy);
+          const [pdfX, pdfY] = renderViewport.convertToPdfPoint(vx, vy);
           onPlaceRef.current(pageIndex, pdfX, pdfY);
         });
 
-        await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise;
+        const layerDiv = document.createElement('div');
+        layerDiv.className = 'annotationLayer';
+        layerDiv.style.position = 'absolute';
+        layerDiv.style.top = '0';
+        layerDiv.style.left = '0';
+        pdfjsLib.setLayerDimensions(layerDiv, cssViewport);
+        wrapper.appendChild(layerDiv);
+
+        container.appendChild(wrapper);
+
+        await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport: renderViewport }).promise;
         if (cancelled) return;
+
+        const annotations = await page.getAnnotations({ intent: 'display' });
+        if (cancelled) return;
+
+        const layerViewport = cssViewport.clone({ dontFlip: true });
+        const layer = new pdfjsLib.AnnotationLayer({
+          div: layerDiv,
+          accessibilityManager: null,
+          annotationCanvasMap: null,
+          annotationEditorUIManager: null,
+          page,
+          viewport: layerViewport,
+          structTreeLayer: null,
+          commentManager: null,
+          linkService,
+          annotationStorage: doc.annotationStorage,
+        });
+        await layer.render({
+          annotations,
+          div: layerDiv,
+          page,
+          viewport: layerViewport,
+          linkService,
+          annotationStorage: doc.annotationStorage,
+          renderForms: true,
+        });
+        if (cancelled) return;
+        layer.togglePointerEvents(!placingRef.current);
+        layersRef.current.push(layer);
       }
       setLoading(false);
     })().catch((err) => {
@@ -81,7 +149,7 @@ export default function PdfViewer({ bytes, placing, onPlace }: PdfViewerProps) {
     });
 
     return () => { cancelled = true; };
-  }, [bytes]);
+  }, [doc]);
 
   return (
     <div className="w-full h-full overflow-auto bg-slate-200 py-6 px-4">

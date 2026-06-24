@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { UploadCloud, Unlock, AlertCircle, RefreshCw, ChevronLeft, Download, PenTool, Check } from 'lucide-react';
 import { PDFDocument, degrees } from 'pdf-lib';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { pdfjsLib } from './pdfjs';
 import PdfViewer from './PdfViewer';
 import SignaturePad from './SignaturePad';
 
@@ -15,21 +17,38 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [proxy, setProxy] = useState<PDFDocumentProxy | null>(null);
   const [showPad, setShowPad] = useState(false);
   const [pendingSignature, setPendingSignature] = useState<string | null>(null);
 
-  // Keep a downloadable blob URL in sync with the current (signed) bytes.
+  // The pdf.js document is the source of truth for rendering AND for typed form
+  // values (kept in its annotationStorage). Keep it in a ref so the download and
+  // sign handlers can call saveDocument() without re-renders.
+  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
+
   useEffect(() => {
     if (!pdfBytes) {
-      setDownloadUrl(null);
+      setProxy(null);
       return;
     }
-    const url = URL.createObjectURL(new Blob([pdfBytes], { type: 'application/pdf' }));
-    setDownloadUrl(url);
-    return () => URL.revokeObjectURL(url);
+    let cancelled = false;
+    const task = pdfjsLib.getDocument({ data: pdfBytes.slice() });
+    task.promise
+      .then((doc) => {
+        if (cancelled) {
+          (doc as any).destroy?.();
+          return;
+        }
+        const prev = pdfDocRef.current;
+        pdfDocRef.current = doc;
+        setProxy(doc);
+        (prev as any)?.destroy?.();
+      })
+      .catch((err) => console.error('Failed to load PDF:', err));
+    return () => { cancelled = true; };
   }, [pdfBytes]);
 
   const processPDF = async (uploadedFile: File) => {
@@ -54,11 +73,14 @@ export default function App() {
   };
 
   const handlePlace = async (pageIndex: number, pdfX: number, pdfY: number) => {
-    if (!pdfBytes || !pendingSignature) return;
+    const doc = pdfDocRef.current;
+    if (!doc || !pendingSignature) return;
     try {
-      const doc = await PDFDocument.load(pdfBytes);
-      const png = await doc.embedPng(dataUrlToBytes(pendingSignature));
-      const page = doc.getPages()[pageIndex];
+      // Capture anything typed into the form so it survives the re-render.
+      const current = await doc.saveDocument();
+      const pdfDoc = await PDFDocument.load(current);
+      const png = await pdfDoc.embedPng(dataUrlToBytes(pendingSignature));
+      const page = pdfDoc.getPages()[pageIndex];
       const sigW = Math.min(180, page.getSize().width * 0.4);
       const sigH = (png.height / png.width) * sigW;
       const rot = page.getRotation().angle % 360;
@@ -69,13 +91,37 @@ export default function App() {
         // Keep the signature upright on rotated pages.
         page.drawImage(png, { x: pdfX, y: pdfY, width: sigW, height: sigH, rotate: degrees(-rot) });
       }
-      setPdfBytes(await doc.save());
+      setPdfBytes(await pdfDoc.save());
     } catch (err) {
       console.error('Failed to add signature:', err);
     }
   };
 
+  const handleDownload = async () => {
+    const doc = pdfDocRef.current;
+    if (!doc) return;
+    setIsSaving(true);
+    try {
+      const bytes = await doc.saveDocument();
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `filled_${file?.name || 'document.pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const reset = () => {
+    (pdfDocRef.current as any)?.destroy?.();
+    pdfDocRef.current = null;
+    setProxy(null);
     setPdfBytes(null);
     setFile(null);
     setError(null);
@@ -121,16 +167,14 @@ export default function App() {
               <span className="hidden sm:inline">Add signature</span>
               <span className="sm:hidden">Sign</span>
             </button>
-            {downloadUrl && (
-              <a
-                href={downloadUrl}
-                download={`signed_${file?.name || 'document.pdf'}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </a>
-            )}
+            <button
+              onClick={handleDownload}
+              disabled={!proxy || isSaving}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              {isSaving ? 'Saving…' : 'Download'}
+            </button>
           </div>
         </nav>
 
@@ -151,7 +195,11 @@ export default function App() {
         )}
 
         <div className="flex-1 min-h-0">
-          <PdfViewer bytes={pdfBytes} placing={!!pendingSignature} onPlace={handlePlace} />
+          {proxy ? (
+            <PdfViewer doc={proxy} placing={!!pendingSignature} onPlace={handlePlace} />
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-slate-500">Loading PDF…</div>
+          )}
         </div>
 
         {showPad && (
@@ -176,7 +224,7 @@ export default function App() {
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">PDF Form Unlocker</h1>
           <p className="text-slate-500 text-sm">
-            Unlock read-only PDF forms and add your signature — entirely in your browser.
+            Unlock read-only PDF forms, fill them in, and add your signature — entirely in your browser.
           </p>
         </div>
 
@@ -223,7 +271,7 @@ export default function App() {
         <div className="mt-8 bg-white p-5 rounded-lg border border-slate-200 shadow-sm text-sm text-slate-600">
           <h3 className="font-semibold text-slate-800 mb-2">How it works:</h3>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Removes the "Read-Only" flag from form fields so you can fill them in.</li>
+            <li>Removes the "Read-Only" flag so you can fill the form fields in your browser.</li>
             <li>Draw a signature and click anywhere on the page to place it.</li>
             <li>Download the finished PDF — your files never leave your device.</li>
           </ul>
