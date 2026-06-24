@@ -103,7 +103,10 @@ export default function PdfViewer({ doc, placing, onPlace }: PdfViewerProps) {
         layerDiv.style.position = 'absolute';
         layerDiv.style.top = '0';
         layerDiv.style.left = '0';
-        pdfjsLib.setLayerDimensions(layerDiv, cssViewport);
+        // The form layer sizes/positions widgets via these CSS variables; pdf.js
+        // expects the host app to set them (the full viewer does this on a parent).
+        layerDiv.style.setProperty('--scale-factor', String(cssScale));
+        layerDiv.style.setProperty('--total-scale-factor', String(cssScale));
         wrapper.appendChild(layerDiv);
 
         container.appendChild(wrapper);
@@ -137,6 +140,11 @@ export default function PdfViewer({ doc, placing, onPlace }: PdfViewerProps) {
           renderForms: true,
         });
         if (cancelled) return;
+        // render() internally calls setLayerDimensions, which sizes the div via
+        // a CSS round() expression that evaluates to 0×0 here (collapsing every
+        // field). Override with explicit pixel dimensions afterwards.
+        layerDiv.style.width = `${cssViewport.width}px`;
+        layerDiv.style.height = `${cssViewport.height}px`;
         layer.togglePointerEvents(!placingRef.current);
         layersRef.current.push(layer);
       }
