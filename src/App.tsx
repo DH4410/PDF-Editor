@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { UploadCloud, Unlock, FileCheck, AlertCircle, RefreshCw, ChevronLeft, Info, Download } from 'lucide-react';
+import { UploadCloud, Unlock, FileCheck, AlertCircle, RefreshCw, ChevronLeft, Download } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 
 export default function App() {
@@ -92,31 +92,16 @@ export default function App() {
               {file?.name}
             </span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md border border-blue-100 text-xs sm:text-sm font-medium">
-            <Info className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Fill out the form below, then use the viewer's download icon to save.</span>
-            <span className="sm:hidden">Fill and download below</span>
-          </div>
+          <a
+            href={unlockedPdfUrl}
+            download={`unlocked_${file?.name}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors text-sm font-medium"
+          >
+            <Download className="w-4 h-4" />
+            Download
+          </a>
         </nav>
-        
-        {/* Banner for iframe blocking */}
-        <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2.5 text-sm text-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-          <div className="flex items-start sm:items-center gap-2">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 sm:mt-0 text-amber-600" />
-            <span className="leading-tight"><strong>Seeing a sad face or gray screen?</strong> Browser security blocks PDF viewers in embedded previews. Open this app in a <strong>new tab</strong> (using the ↗ icon top right in AI Studio) to fill it online, or download it.</span>
-          </div>
-          <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
-            <a 
-              href={unlockedPdfUrl} 
-              download={`unlocked_${file?.name}`} 
-              className="flex items-center gap-1.5 font-medium bg-amber-200/50 hover:bg-amber-200 px-3 py-1.5 rounded-md transition-colors text-amber-900 border border-amber-300/50"
-            >
-              <Download className="w-4 h-4" />
-              Download PDF
-            </a>
-          </div>
-        </div>
-        
+
         <div className="flex-1 w-full h-full bg-slate-200 relative">
           <object 
             data={`${unlockedPdfUrl}#toolbar=1`} 
@@ -126,9 +111,9 @@ export default function App() {
              <div className="absolute inset-0 flex items-center justify-center p-6 text-center bg-slate-100 z-0">
                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-md">
                  <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                 <h3 className="text-lg font-semibold text-slate-800 mb-2">Browser Preview Blocked</h3>
+                 <h3 className="text-lg font-semibold text-slate-800 mb-2">Preview unavailable</h3>
                  <p className="text-slate-600 mb-6 text-sm">
-                   Chrome blocks the native PDF viewer inside embedded previews. To fill this PDF inside the app, please click the <strong>"Open App" (↗)</strong> button in the top right corner of AI Studio to open it in a new tab.
+                   Your browser couldn't display the PDF preview. Download the unlocked file to view and fill it.
                  </p>
                  <a 
                    href={unlockedPdfUrl} 
